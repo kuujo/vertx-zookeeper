@@ -1,12 +1,8 @@
 package io.vertx.spi.cluster.impl.zookeeper;
 
-import io.vertx.core.AsyncResult;
-import io.vertx.core.AsyncResultHandler;
-import io.vertx.core.Future;
-import io.vertx.core.Handler;
+import io.vertx.core.*;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.shareddata.impl.ClusterSerializable;
-import io.vertx.core.spi.cluster.VertxSPI;
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.api.CuratorEventType;
 import org.apache.zookeeper.CreateMode;
@@ -21,7 +17,7 @@ import java.util.stream.Stream;
 abstract class ZKMap<K, V> {
 
   protected final CuratorFramework curator;
-  protected final VertxSPI vertx;
+  protected final Vertx vertx;
   protected final String mapPath;
   protected final String mapName;
 
@@ -29,7 +25,7 @@ abstract class ZKMap<K, V> {
   protected static final String ZK_PATH_ASYNC_MULTI_MAP = "asyncMultiMap";
   protected static final String ZK_PATH_SYNC_MAP = "syncMap";
 
-  protected ZKMap(CuratorFramework curator, VertxSPI vertx, String mapType, String mapName) {
+  protected ZKMap(CuratorFramework curator, Vertx vertx, String mapType, String mapName) {
     this.curator = curator;
     this.vertx = vertx;
     this.mapName = mapName;

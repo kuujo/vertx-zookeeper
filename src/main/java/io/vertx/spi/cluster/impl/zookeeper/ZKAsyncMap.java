@@ -1,11 +1,7 @@
 package io.vertx.spi.cluster.impl.zookeeper;
 
-import io.vertx.core.AsyncResult;
-import io.vertx.core.Future;
-import io.vertx.core.Handler;
-import io.vertx.core.VertxException;
+import io.vertx.core.*;
 import io.vertx.core.shareddata.AsyncMap;
-import io.vertx.core.spi.cluster.VertxSPI;
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.recipes.cache.ChildData;
 import org.apache.curator.framework.recipes.cache.PathChildrenCache;
@@ -17,7 +13,7 @@ class ZKAsyncMap<K, V> extends ZKMap<K, V> implements AsyncMap<K, V> {
 
   private final PathChildrenCache curatorCache;
 
-  ZKAsyncMap(VertxSPI vertx, CuratorFramework curator, String mapName) {
+  ZKAsyncMap(Vertx vertx, CuratorFramework curator, String mapName) {
     super(curator, vertx, ZK_PATH_ASYNC_MAP, mapName);
     curatorCache = new PathChildrenCache(curator, mapPath, true);
     try {

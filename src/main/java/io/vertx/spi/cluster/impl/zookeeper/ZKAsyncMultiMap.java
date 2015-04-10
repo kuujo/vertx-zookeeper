@@ -1,12 +1,8 @@
 package io.vertx.spi.cluster.impl.zookeeper;
 
-import io.vertx.core.AsyncResult;
-import io.vertx.core.Future;
-import io.vertx.core.Handler;
-import io.vertx.core.VertxException;
+import io.vertx.core.*;
 import io.vertx.core.spi.cluster.AsyncMultiMap;
 import io.vertx.core.spi.cluster.ChoosableIterable;
-import io.vertx.core.spi.cluster.VertxSPI;
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.recipes.cache.ChildData;
 import org.apache.curator.framework.recipes.cache.TreeCache;
@@ -24,7 +20,7 @@ class ZKAsyncMultiMap<K, V> extends ZKMap<K, V> implements AsyncMultiMap<K, V> {
 
   private TreeCache curatorCache;
 
-  ZKAsyncMultiMap(VertxSPI vertx, CuratorFramework curator, String mapName) {
+  ZKAsyncMultiMap(Vertx vertx, CuratorFramework curator, String mapName) {
     super(curator, vertx, ZK_PATH_ASYNC_MULTI_MAP, mapName);
 
     // /io.vertx/asyncMultiMap/subs
@@ -91,7 +87,7 @@ class ZKAsyncMultiMap<K, V> extends ZKMap<K, V> implements AsyncMultiMap<K, V> {
           ChildData childData = curatorCache.getCurrentData(valuePath);
           if (childData != null) {
             delete(valuePath, null, deleteEvent -> forwardAsyncResult(completionHandler, deleteEvent, true));
-            //TODO 是否考虑清除 key,如果下面已经没有元素了的话
+            //TODO clean key if there are not node
           }
         } else {
           vertx.runOnContext(event -> completionHandler.handle(Future.succeededFuture(false)));
