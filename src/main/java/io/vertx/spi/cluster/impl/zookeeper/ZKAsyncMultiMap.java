@@ -16,8 +16,6 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Created by Stream.Liu
  */
 class ZKAsyncMultiMap<K, V> extends ZKMap<K, V> implements AsyncMultiMap<K, V> {
-
-
   private TreeCache curatorCache;
 
   ZKAsyncMultiMap(Vertx vertx, CuratorFramework curator, String mapName) {
@@ -35,19 +33,7 @@ class ZKAsyncMultiMap<K, V> extends ZKMap<K, V> implements AsyncMultiMap<K, V> {
   @Override
   public void add(K k, V v, Handler<AsyncResult<Void>> completionHandler) {
     if (!keyIsNull(k, completionHandler) && !valueIsNull(v, completionHandler)) {
-      checkExists(k, existEvent -> {
-            if (existEvent.succeeded()) {
-              String path = valuePath(k, v);
-              if (existEvent.result()) {
-                setData(path, v, completionHandler);
-              } else {
-                create(path, v, completionHandler);
-              }
-            } else {
-              vertx.runOnContext(event -> completionHandler.handle(Future.failedFuture(existEvent.cause())));
-            }
-          }
-      );
+      create(valuePath(k, v), v, completionHandler);
     }
   }
 
@@ -58,7 +44,7 @@ class ZKAsyncMultiMap<K, V> extends ZKMap<K, V> implements AsyncMultiMap<K, V> {
         Map<String, ChildData> maps = curatorCache.getCurrentChildren(keyPath(k));
         ChoosableSet<V> choosableSet = new ChoosableSet<>(0);
         if (maps != null) {
-          for (ChildData childData : curatorCache.getCurrentChildren(keyPath(k)).values()) {
+          for (ChildData childData : maps.values()) {
             try {
               if (childData != null && childData.getData() != null && childData.getData().length > 0)
                 choosableSet.add(asObject(childData.getData()));
@@ -85,10 +71,8 @@ class ZKAsyncMultiMap<K, V> extends ZKMap<K, V> implements AsyncMultiMap<K, V> {
       if (existEvent.succeeded()) {
         if (existEvent.result()) {
           ChildData childData = curatorCache.getCurrentData(valuePath);
-          if (childData != null) {
+          if (childData != null)
             delete(valuePath, null, deleteEvent -> forwardAsyncResult(completionHandler, deleteEvent, true));
-            //TODO clean key if there are not node
-          }
         } else {
           vertx.runOnContext(event -> completionHandler.handle(Future.succeededFuture(false)));
         }

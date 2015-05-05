@@ -39,7 +39,7 @@ abstract class ZKMap<K, V> {
 
   protected String valuePath(K k, Object v) {
     Objects.requireNonNull(v, "value should not be null.");
-    return keyPath(k) + "/" + v.hashCode();
+    return keyPath(k) + "/" + v.toString();
   }
 
   protected <T> boolean keyIsNull(Object key, Handler<AsyncResult<T>> handler) {
@@ -181,12 +181,14 @@ abstract class ZKMap<K, V> {
       curator.delete().deletingChildrenIfNeeded().inBackground((client, event) -> {
         if (event.getType() == CuratorEventType.DELETE) {
           curator.getChildren().inBackground((childClient, childEvent) -> {
+            //clean parent node if doesn't have child node.
             if (childEvent.getChildren().size() == 0) {
-              //clean parent node if doesn't have child node.
               String[] paths = path.split("/");
               String parentNodePath = Stream.of(paths).limit(paths.length - 1).reduce((previous, current) -> previous + "/" + current).get();
-              curator.delete().inBackground((client1, event1) ->
-                  vertx.runOnContext(ea -> asyncResultHandler.handle(Future.succeededFuture(v)))).forPath(parentNodePath);
+              curator.delete().inBackground((deleteClient, deleteEvent) -> {
+                if (deleteEvent.getType() == CuratorEventType.DELETE)
+                  vertx.runOnContext(ea -> asyncResultHandler.handle(Future.succeededFuture(v)));
+              }).forPath(parentNodePath);
             } else {
               vertx.runOnContext(ea -> asyncResultHandler.handle(Future.succeededFuture(v)));
             }
