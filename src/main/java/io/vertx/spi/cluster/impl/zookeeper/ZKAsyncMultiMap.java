@@ -86,8 +86,8 @@ class ZKAsyncMultiMap<K, V> extends ZKMap<K, V> implements AsyncMultiMap<K, V> {
   @Override
   public void removeAllForValue(V v, Handler<AsyncResult<Void>> completionHandler) {
     Collection<String> valuePaths = new ArrayList<>();
-    Optional.ofNullable(curatorCache.getCurrentChildren(mapPath)).ifPresent(stringChildDataMap -> {
-      stringChildDataMap.keySet().forEach(keyPath ->
+    Optional.ofNullable(curatorCache.getCurrentChildren(mapPath)).ifPresent(childDataMap -> {
+      childDataMap.keySet().forEach(keyPath ->
           curatorCache.getCurrentChildren(mapPath + "/" + keyPath).keySet().forEach(valuePath ->
               Optional.ofNullable(curatorCache.getCurrentData(mapPath + "/" + keyPath + "/" + valuePath))
                   .filter(childData -> Optional.of(childData.getData()).isPresent())

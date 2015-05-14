@@ -23,6 +23,7 @@ abstract class ZKMap<K, V> {
 
   protected static final String ZK_PATH_ASYNC_MAP = "asyncMap";
   protected static final String ZK_PATH_ASYNC_MULTI_MAP = "asyncMultiMap";
+  protected static final String EVENTBUS_PATH = "/" + ZK_PATH_ASYNC_MULTI_MAP + "/subs/";
   protected static final String ZK_PATH_SYNC_MAP = "syncMap";
 
   protected ZKMap(CuratorFramework curator, Vertx vertx, String mapType, String mapName) {
@@ -146,7 +147,11 @@ abstract class ZKMap<K, V> {
 
   protected void create(String path, V v, Handler<AsyncResult<Void>> completionHandler) {
     try {
-      curator.create().creatingParentsIfNeeded().withMode(CreateMode.EPHEMERAL).inBackground((cl, el) -> {
+      //there are two type of node - ephemeral and persistent.
+      //if path is 'asyncMultiMap/subs/' which save the data of eventbus address and serverID we could using ephemeral,
+      //since the lifecycle of this path as long as this verticle.
+      CreateMode nodeMode = path.contains(EVENTBUS_PATH) ? CreateMode.EPHEMERAL : CreateMode.PERSISTENT;
+      curator.create().creatingParentsIfNeeded().withMode(nodeMode).inBackground((cl, el) -> {
         if (el.getType() == CuratorEventType.CREATE) {
           vertx.runOnContext(event -> completionHandler.handle(Future.succeededFuture()));
         }

@@ -70,7 +70,8 @@ class ZKAsyncMap<K, V> extends ZKMap<K, V> implements AsyncMap<K, V> {
 
   @Override
   public void put(K k, V v, long timeout, Handler<AsyncResult<Void>> completionHandler) {
-    //we don't need timeout since zookeeper only care connection timeout which could be setting in zookeeper.properties
+    //TODO add note to the doc.
+    //we don't need timeout since zookeeper only care session timeout which could be setting in zookeeper.properties
     put(k, v, completionHandler);
   }
 

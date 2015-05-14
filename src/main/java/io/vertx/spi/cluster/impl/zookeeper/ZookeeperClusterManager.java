@@ -189,11 +189,12 @@ public class ZookeeperClusterManager implements ClusterManager, PathChildrenCach
               Integer.valueOf(conf.getProperty("retry.initialSleepTime", "3000")),
               Integer.valueOf(conf.getProperty("retry.maxTimes", "5")),
               Integer.valueOf(conf.getProperty("retry.intervalTimes", "100000")));
+
           curator = CuratorFrameworkFactory.builder()
               .connectString(conf.getProperty("hosts.zookeeper", "127.0.0.1"))
               .namespace(conf.getProperty("path.root", "io.vertx"))
-              .sessionTimeoutMs(Integer.valueOf(conf.getProperty("timeout.session", "60000")))
-              .connectionTimeoutMs(Integer.valueOf(conf.getProperty("timeout.connect", "15000")))
+              .sessionTimeoutMs(Integer.valueOf(conf.getProperty("timeout.session", "20000")))
+              .connectionTimeoutMs(Integer.valueOf(conf.getProperty("timeout.connect", "5000")))
               .retryPolicy(retryPolicy).build();
         }
         curator.start();
@@ -265,7 +266,7 @@ public class ZookeeperClusterManager implements ClusterManager, PathChildrenCach
   }
 
   /**
-   * some state have effect to the lock, we have to handle it.
+   * some state make effect to the lock, we have to handle it.
    *
    * @param client   curator
    * @param newState the state of connection to the io.vertx.spi.cluster.impl.zookeeper.zookeeper.
@@ -283,16 +284,6 @@ public class ZookeeperClusterManager implements ClusterManager, PathChildrenCach
         locks.values().stream().forEach(ZKLock::release);
         break;
       case RECONNECTED:
-        //try to reacquire lock
-        locks.values().stream().forEach(zkLock -> {
-          if (!zkLock.lock.isAcquiredInThisProcess()) {
-            try {
-              zkLock.lock.acquire(1, TimeUnit.SECONDS);
-            } catch (Exception e) {
-              log.error(e);
-            }
-          }
-        });
         break;
     }
   }
