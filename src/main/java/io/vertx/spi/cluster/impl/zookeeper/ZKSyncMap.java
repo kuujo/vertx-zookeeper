@@ -41,7 +41,7 @@ class ZKSyncMap<K, V> extends ZKMap<K, V> implements Map<K, V> {
   @Override
   public boolean containsKey(Object key) {
     try {
-      return curator.getChildren().forPath(mapPath).stream().anyMatch(k -> k.equals(key));
+      return curator.checkExists().forPath(keyPath((K) key)) != null;
     } catch (Exception e) {
       throw new VertxException(e);
     }

@@ -3,8 +3,9 @@ package io.vertx.spi.cluster.impl.zookeeper;
 import io.vertx.core.*;
 import io.vertx.core.shareddata.AsyncMap;
 import org.apache.curator.framework.CuratorFramework;
-import org.apache.curator.framework.recipes.cache.ChildData;
 import org.apache.curator.framework.recipes.cache.PathChildrenCache;
+
+import java.util.Optional;
 
 /**
  * Created by Stream.Liu
@@ -26,18 +27,27 @@ class ZKAsyncMap<K, V> extends ZKMap<K, V> implements AsyncMap<K, V> {
   @Override
   public void get(K k, Handler<AsyncResult<V>> asyncResultHandler) {
     if (!keyIsNull(k, asyncResultHandler)) {
-      //V value = mapCache.get(k.toString());
-      ChildData childData = curatorCache.getCurrentData(keyPath(k));
-      if (childData != null && childData.getData() != null && childData.getData().length > 0) {
-        try {
-          V value = asObject(childData.getData());
-          vertx.runOnContext(handler -> asyncResultHandler.handle(Future.succeededFuture(value)));
-        } catch (Exception e) {
-          vertx.runOnContext(handler -> asyncResultHandler.handle(Future.failedFuture(e)));
+      checkExists(k, checkResult -> {
+        if (checkResult.succeeded()) {
+          if (checkResult.result()) {
+            Optional.ofNullable(curatorCache.getCurrentData(keyPath(k)))
+                .flatMap(childData -> Optional.of(childData.getData()))
+                .ifPresent(data -> {
+                  try {
+                    V value = asObject(data);
+                    vertx.runOnContext(handler -> asyncResultHandler.handle(Future.succeededFuture(value)));
+                  } catch (Exception e) {
+                    vertx.runOnContext(handler -> asyncResultHandler.handle(Future.failedFuture(e)));
+                  }
+                });
+          } else {
+            //ignore
+            vertx.runOnContext(handler -> asyncResultHandler.handle(Future.succeededFuture()));
+          }
+        } else {
+          vertx.runOnContext(handler -> asyncResultHandler.handle(Future.failedFuture(checkResult.cause())));
         }
-      } else {
-        vertx.runOnContext(handler -> asyncResultHandler.handle(Future.succeededFuture()));
-      }
+      });
     }
   }
 

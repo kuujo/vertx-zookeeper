@@ -10,6 +10,7 @@ import org.apache.curator.framework.recipes.cache.TreeCache;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -70,9 +71,9 @@ class ZKAsyncMultiMap<K, V> extends ZKMap<K, V> implements AsyncMultiMap<K, V> {
     checkExists(valuePath, existEvent -> {
       if (existEvent.succeeded()) {
         if (existEvent.result()) {
-          ChildData childData = curatorCache.getCurrentData(valuePath);
-          if (childData != null)
-            delete(valuePath, null, deleteEvent -> forwardAsyncResult(completionHandler, deleteEvent, true));
+          Optional.ofNullable(curatorCache.getCurrentData(valuePath))
+              .ifPresent(childData ->
+                  delete(valuePath, null, deleteEvent -> forwardAsyncResult(completionHandler, deleteEvent, true)));
         } else {
           vertx.runOnContext(event -> completionHandler.handle(Future.succeededFuture(false)));
         }
@@ -85,26 +86,29 @@ class ZKAsyncMultiMap<K, V> extends ZKMap<K, V> implements AsyncMultiMap<K, V> {
   @Override
   public void removeAllForValue(V v, Handler<AsyncResult<Void>> completionHandler) {
     Collection<String> valuePaths = new ArrayList<>();
-    curatorCache.getCurrentChildren(mapPath).keySet().forEach(keyPath ->
-        curatorCache.getCurrentChildren(mapPath + "/" + keyPath).keySet().forEach(valuePath -> {
-          ChildData childData = curatorCache.getCurrentData(mapPath + "/" + keyPath + "/" + valuePath);
-          try {
-            if (childData != null && childData.getData() != null && childData.getData().length > 0) {
-              V value = asObject(childData.getData());
-              if (v.hashCode() == value.hashCode()) valuePaths.add(childData.getPath());
-            }
-          } catch (Exception e) {
-            vertx.runOnContext(aVoid -> completionHandler.handle(Future.failedFuture(e)));
-          }
-        }));
-    AtomicInteger size = new AtomicInteger(valuePaths.size());
-    valuePaths.forEach(valuePath -> remove(valuePath, removeEvent -> {
-      if (removeEvent.succeeded() && size.decrementAndGet() == 0) {
-        vertx.runOnContext(aVoid -> completionHandler.handle(Future.succeededFuture()));
-      } else {
-        vertx.runOnContext(aVoid -> completionHandler.handle(Future.failedFuture(removeEvent.cause())));
-      }
-    }));
+    Optional.ofNullable(curatorCache.getCurrentChildren(mapPath)).ifPresent(stringChildDataMap -> {
+      stringChildDataMap.keySet().forEach(keyPath ->
+          curatorCache.getCurrentChildren(mapPath + "/" + keyPath).keySet().forEach(valuePath ->
+              Optional.ofNullable(curatorCache.getCurrentData(mapPath + "/" + keyPath + "/" + valuePath))
+                  .filter(childData -> Optional.of(childData.getData()).isPresent())
+                  .ifPresent(childData -> {
+                    try {
+                      V value = asObject(childData.getData());
+                      if (v.hashCode() == value.hashCode()) valuePaths.add(childData.getPath());
+                    } catch (Exception e) {
+                      vertx.runOnContext(aVoid -> completionHandler.handle(Future.failedFuture(e)));
+                    }
+                  })));
+      //
+      AtomicInteger size = new AtomicInteger(valuePaths.size());
+      valuePaths.forEach(valuePath -> remove(valuePath, removeEvent -> {
+        if (removeEvent.succeeded() && size.decrementAndGet() == 0) {
+          vertx.runOnContext(aVoid -> completionHandler.handle(Future.succeededFuture()));
+        } else {
+          vertx.runOnContext(aVoid -> completionHandler.handle(Future.failedFuture(removeEvent.cause())));
+        }
+      }));
+    });
   }
 
 }
