@@ -2,8 +2,14 @@ package io.vertx.spi.cluster.impl.zookeeper;
 
 import io.vertx.core.*;
 import io.vertx.core.shareddata.AsyncMap;
+import org.apache.curator.RetryLoop;
+import org.apache.curator.RetryPolicy;
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.recipes.cache.PathChildrenCache;
+import org.apache.curator.retry.ExponentialBackoffRetry;
+import org.apache.curator.utils.EnsurePath;
+import org.apache.zookeeper.KeeperException;
+import org.apache.zookeeper.data.Stat;
 
 import java.util.Optional;
 
@@ -13,6 +19,8 @@ import java.util.Optional;
 class ZKAsyncMap<K, V> extends ZKMap<K, V> implements AsyncMap<K, V> {
 
   private final PathChildrenCache curatorCache;
+  private final RetryPolicy retryPolicy = new ExponentialBackoffRetry(100, 5);
+  private final EnsurePath ensurePath;
 
   ZKAsyncMap(Vertx vertx, CuratorFramework curator, String mapName) {
     super(curator, vertx, ZK_PATH_ASYNC_MAP, mapName);
@@ -22,6 +30,7 @@ class ZKAsyncMap<K, V> extends ZKMap<K, V> implements AsyncMap<K, V> {
     } catch (Exception e) {
       throw new VertxException(e);
     }
+    ensurePath = curator.newNamespaceAwareEnsurePath(mapPath);
   }
 
   @Override
@@ -78,23 +87,103 @@ class ZKAsyncMap<K, V> extends ZKMap<K, V> implements AsyncMap<K, V> {
   @Override
   public void putIfAbsent(K k, V v, Handler<AsyncResult<V>> completionHandler) {
     if (!keyIsNull(k, completionHandler) && !valueIsNull(v, completionHandler)) {
-      get(k, getEvent -> {
-        if (getEvent.succeeded()) {
-          if (getEvent.result() == null) {
-            put(k, v, putEvent -> forwardAsyncResult(completionHandler, putEvent));
-          } else {
-            vertx.runOnContext(event -> completionHandler.handle(Future.succeededFuture(getEvent.result())));
-          }
-        } else {
-          vertx.runOnContext(event -> completionHandler.handle(Future.failedFuture(getEvent.cause())));
-        }
-      });
+      vertx.executeBlocking(future -> {
+        putIfAbsent(k, v, future);
+      }, completionHandler);
     }
   }
 
   @Override
   public void putIfAbsent(K k, V v, long timeout, Handler<AsyncResult<V>> completionHandler) {
     putIfAbsent(k, v, completionHandler);
+  }
+
+  /**
+   * Recursively attempts to write a value to a znode using optimistic locking.
+   */
+  private void putIfAbsent(K k, V v, Future<V> future) {
+    // Calculate the path to the znode for the key.
+    String path = keyPath(k);
+
+    // Serialize the value once.
+    byte[] valueBytes;
+    try {
+      valueBytes = asByte(v);
+    } catch (Exception e) {
+      future.fail(e);
+      return;
+    }
+
+    // Record the start time and retry count. These will be used to perform exponential backoff.
+    long startTime = System.currentTimeMillis();
+    int retries = 0;
+
+    // Recursively attempt to set the value using a simple optimistic locking strategy.
+    while (true) {
+      Stat stat = new Stat();
+
+      byte[] value = null;
+      boolean create = false;
+
+      // Ensure that the parent node exists in ZooKeeper, and get the current value for this node.
+      try {
+        ensurePath.ensure(curator.getZookeeperClient());
+        value = curator.getData().storingStatIn(stat).forPath(path);
+      } catch (KeeperException.NoNodeException e) {
+        create = true;
+      } catch (Exception e) {
+        future.fail(e);
+        return;
+      }
+
+      // If the node does not already exist, create it. This is necessary in order to retrieve a version from the path.
+      if (create) {
+        try {
+          curator.create().forPath(path, asByte(null));
+        } catch (KeeperException.NodeExistsException e) {
+          // Do nothing useful.
+        } catch (Exception e) {
+          future.fail(e);
+          return;
+        }
+      } else {
+        // If the node already exists...
+        try {
+          // If the current value is null, attempt to set the value, ensuring the version has not changed since we
+          // last read the node.
+          V currentValue = asObject(value);
+          if (currentValue == null) {
+            try {
+              curator.setData().withVersion(stat.getVersion()).forPath(path, valueBytes);
+              future.complete(null);
+              return;
+            } catch (KeeperException.BadVersionException | KeeperException.NoNodeException e) {
+              // If the version has changed, block on the retry policy if necessary. If no more retries are remaining,
+              // fail the operation.
+              if (!retryPolicy.allowRetry(retries++, System.currentTimeMillis() - startTime, RetryLoop.getDefaultRetrySleeper())) {
+                future.fail("failed to acquire optimistic lock");
+                return;
+              }
+            } catch (Exception e) {
+              future.fail(e);
+              return;
+            }
+          } else {
+            // If the value is not null then simply return the null value. This is atomic since we had no operation to
+            // perform in the event that the value was not null.
+            try {
+              future.complete(currentValue);
+            } catch (Exception e) {
+              future.fail(e);
+            }
+            return;
+          }
+        } catch (Exception e) {
+          future.fail(e);
+          return;
+        }
+      }
+    }
   }
 
   @Override
